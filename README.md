@@ -47,5 +47,10 @@ http://continuum.io/downloads
 
 
 
+HADOOP
 
+ ./compute_cluster_for_hadoop.py setup arboreal-cat-537  hdoop-test
+ 
+./compute_cluster_for_hadoop.py start arboreal-cat-537 hdoop-test 4 --data-disk-gb 3
 
+./compute_cluster_for_hadoop.py mapreduce arboreal-cat-537 hdoop-test --input gs://janeausteen --output  gs://janeausteenoutput --mapper sample/shortest-to-longest-mapper.py  --reducer sample/shortest-to-longest-reducer.py --mapper-count 3 --reducer-count 1
