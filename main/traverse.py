@@ -1,6 +1,5 @@
 import random
 
-from split import weight_graph
 from parse import parse, submit
 import sys
 from networkx import shortest_path
@@ -14,13 +13,13 @@ from parse import parse, submit
 
 
 def traverse(G, T, C, start_points):
-    intersections = defaultdict(list)
-    current = { i:start_points[i] for i in range(8) } 
-    distance = defaultdict(int)
-    timeleft = defaultdict(lambda: T)
+    intersections = [ [] for i in range(8) ]
+    current = start_points
+    distance = [0] * 8
+    timeleft = [T] * 8
 
     while any(timeleft[i] > 0 for i in range(C)):
-
+        print timeleft
         for i in range(C):
             if timeleft[i] > 0:
                 edge = choose(G, current[i], timeleft[i])
@@ -34,7 +33,6 @@ def traverse(G, T, C, start_points):
                 current[i] = stop
                 distance[i] += edge['distance']
                 timeleft[i] -= edge['cost']
-
                 edge['distance'] = 0
 
                 try:
@@ -59,7 +57,7 @@ def choose(G, current, timeleft):
 
 def score(G, edge, timeleft):
     return weight(edge) + score_estimate(G, edge['stop'], { edge['j'] },
-            depth=4)
+            depth=10)
 
 def weight(edge):
     return edge['distance'] / float(edge['cost'])
@@ -134,12 +132,14 @@ def run(filepath='output.txt'):
     # start_points = [3575, 6214, 10490, 895, 7600, 23, 5832, 6562]
     
     start_points = [10071, 7925, 677, 4661, 9109, 5654, 7543, 4269]
+    start_points = [S] * 8 
+    #[157, 9761, 8551, 1896, 9901, 484, 9677, 7853]
     #start_points = [8723, 1949, 2587, 4561, 1741, 1700, 9182, 2024]
     #print start_points
     distance = 0
     Ts = [ T ] * 8
     for car in range(8):
-        weight_graph(g, car)
+        #weight_graph(g, car)
         path = []
         start_point = start_points[car]
         (cost, dist, path) = search_path(g, S, start_point)
