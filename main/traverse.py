@@ -12,6 +12,8 @@ from random import choice
 from parse import parse, submit
 
 
+DEPTH=11
+
 def traverse(G, T, C, start_points):
     intersections = [ [] for i in range(8) ]
     current = start_points
@@ -42,8 +44,8 @@ def traverse(G, T, C, start_points):
 
                 intersections[i].append(current[i])
 
-    distance = sum(distance.values())
-    return distance, intersections.values()
+    distance = sum(distance)
+    return distance, intersections
 
 
 def choose(G, current, timeleft):
@@ -57,25 +59,34 @@ def choose(G, current, timeleft):
 
 def score(G, edge, timeleft):
     return weight(edge) + score_estimate(G, edge['stop'], { edge['j'] },
-            depth=10)
+            depth=DEPTH)
 
 def weight(edge):
     return edge['distance'] / float(edge['cost'])
 
-def score_estimate(G, current, visited, depth):
-    gain = 0.
+def score_estimate_branch(G, current, visited, depth):
     edges = G[current].values()
+    for edge in edges:
+        score = 0.
+        if edge['j'] not in visited:
+            score += weight(edge)
+        j = edge['j']
+        remove_required = j in visited
+        visited.add(j)
+        yield score + score_estimate(G, edge['stop'],  visited, depth-1)
+        if remove_required:
+            visited.remove(j)
+
+def score_estimate(G, current, visited, depth):
     if depth == 0:
-        return gain
+        return 0.
     else:
-        gain += max(
+        edges = G[current].values()
+        return max(
             (weight(edge) if (edge['j'] not in visited) else 0)
             + score_estimate(G, edge['stop'],  visited.union({edge['j']}), depth-1)
             for edge in edges
         )
-    return gain
-  
-        
 
 def choose_depth(G,current,timeleft):
     edges = G[current].values()
@@ -127,12 +138,13 @@ def run(filepath='output.txt'):
         for i in range(8)
     ]
 
-    print start_points
     start_points = [ 2745, 4416, 1149, 1904, 3848, 3735, 2307, 5064]
     # start_points = [3575, 6214, 10490, 895, 7600, 23, 5832, 6562]
     
     start_points = [10071, 7925, 677, 4661, 9109, 5654, 7543, 4269]
     start_points = [S] * 8 
+    print DEPTH
+    print start_points
     #[157, 9761, 8551, 1896, 9901, 484, 9677, 7853]
     #start_points = [8723, 1949, 2587, 4561, 1741, 1700, 9182, 2024]
     #print start_points
