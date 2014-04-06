@@ -6,16 +6,23 @@ b = 111803.550422
 
 class Edge(object):
 
-    __slots__ = ('idx', 'distance', 'cost', 'start', 'stop', 'efficiency', 'reverse', 'visits', 'angle')
+    __slots__ = ('idx', 'distance', 'cost', 'original_distance','start', 'stop', 'efficiency', 'reverse', 'visits', 'angle')
     def __init__(self, idx, start, stop, distance, cost, ):
         self.idx = idx
         self.distance = distance
         self.cost = cost
+        self.original_distance = distance
         self.start = start
         self.stop = stop
         self.reverse = None
         self.visits = 0
         self.angle = phase(self.stop.position - self.start.position)
+        self.efficiency = 1
+
+
+    def reset(self,):
+        self.visits = 0
+        self.distance = self.original_distance
         self.efficiency = 1
 
     def visit(self,):
@@ -55,6 +62,12 @@ class Graph(object):
 
     def __init__(self,):
         self.nodes = []
+        self.edge_cost = {}
+
+    def reset(self,):
+        for edge in self.edges():
+            edge.reset()
+
 
     def add_edge(self, edge):
         edge.start.add_edge(edge)
@@ -62,9 +75,7 @@ class Graph(object):
     def edges(self,):
         for node in self.nodes:
             for edge in node.edges:
-                if (edge.start.idx < edge.stop.idx):
-                    yield edge
-
+                yield edge
 
     def add_node(self, node_id, x, y):
         assert node_id >= 0
