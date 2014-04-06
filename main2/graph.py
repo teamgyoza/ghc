@@ -1,6 +1,12 @@
+#from math import sqrt
+from cmath import phase
+
+a = 114180.046772
+b = 111803.550422
+
 class Edge(object):
 
-    __slots__ = ('idx', 'distance', 'cost', 'start', 'stop', 'efficiency', 'reverse', 'visits')
+    __slots__ = ('idx', 'distance', 'cost', 'start', 'stop', 'efficiency', 'reverse', 'visits', 'angle')
     def __init__(self, idx, start, stop, distance, cost, ):
         self.idx = idx
         self.distance = distance
@@ -9,15 +15,9 @@ class Edge(object):
         self.stop = stop
         self.reverse = None
         self.visits = 0
-        #self.efficiency = float(self.distance) / float(self.cost)
+        self.angle = phase(self.stop.position - self.start.position)
         self.efficiency = 1
 
-    """
-    @property
-    def efficiency(self,):
-        return float(self.distance) / float(self.cost)
-    """
-    
     def visit(self,):
         edges = [ self ]
         if self.reverse:
@@ -32,17 +32,21 @@ class Edge(object):
 
 class Node(object):
 
-    __slots__ = ('idx', 'neighbors', 'x', 'y', 'edges')
+    __slots__ = ('idx', 'neighbors', 'x', 'y', 'edges', 'position', 'invert_neighbors')
     def __init__(self, idx, x, y):
         self.idx = idx
-        self.x = x
-        self.y = y
+        self.position = complex(x,y)
         self.neighbors = {}
         self.edges = []
+        self.invert_neighbors = {}
+
+    def __repr__(self,):
+        return "Node <%i>" % self.idx
 
     def add_edge(self, edge):
         self.edges.append(edge)
         self.neighbors[edge.stop] = edge
+        edge.stop.invert_neighbors[self] = edge
 
     def __getitem__(self, stop):
         return self.neighbors[stop]
@@ -77,7 +81,7 @@ def parse():
         N, M, T, C, S = map(int, f.readline().split())
         for node_id in xrange(N):
             x, y = map(float, f.readline().split())
-            g.add_node(node_id, x, y)
+            g.add_node(node_id, a*x, a*y)
         for j in range(M):
             start, stop, bothways, cost, distance = map(int, f.readline().split())
             start = g[start]
@@ -92,21 +96,6 @@ def parse():
     return g
 
 
-def submit(car_paths, filepath='output.txt'):
-    total_cars = 8
-    source_id = 4516
-    f = open(filepath, "w")
-    lines = []
-    lines.append(total_cars)
-    for car_id in range(total_cars):
-        if car_id < len(car_paths):
-            lines.append(len(car_paths[car_id]))
-            for intersection_id in car_paths[car_id]:
-                lines.append(intersection_id)
-        else:
-            lines.append(1)
-            lines.append(source_id)
-    f.write('\n'.join(map(str, lines)))
 
 if __name__ == '__main__':
     parse()
