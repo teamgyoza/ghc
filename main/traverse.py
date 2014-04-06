@@ -12,7 +12,7 @@ from random import choice
 from parse import parse, submit
 
 
-DEPTH=11
+DEPTH=7
 
 def traverse(G, T, C, start_points):
     intersections = [ [] for i in range(8) ]
@@ -68,13 +68,13 @@ def score_estimate_branch(G, current, visited, depth):
     edges = G[current].values()
     for edge in edges:
         score = 0.
-        if edge['j'] not in visited:
-            score += weight(edge)
         j = edge['j']
-        remove_required = j in visited
+        not_visited = (j not in visited)
+        if not_visited:
+            score += weight(edge)
         visited.add(j)
         yield score + score_estimate(G, edge['stop'],  visited, depth-1)
-        if remove_required:
+        if not_visited:
             visited.remove(j)
 
 def score_estimate(G, current, visited, depth):
@@ -82,30 +82,7 @@ def score_estimate(G, current, visited, depth):
         return 0.
     else:
         edges = G[current].values()
-        return max(
-            (weight(edge) if (edge['j'] not in visited) else 0)
-            + score_estimate(G, edge['stop'],  visited.union({edge['j']}), depth-1)
-            for edge in edges
-        )
-
-def choose_depth(G,current,timeleft):
-    edges = G[current].values()
-    
-
-#def search_score(G, edge, timeleft):
-
-
-
-# if __name__ == '__main__':
-#     paris = parse()
-#     traversals = [traverse(paris['G'], paris['S'], paris['T']) for i in range(8)]
-#     distance = sum([d for _, d in traversals])
-#     print distance
-#     paths = [i for i, _ in traversals]
-#     submit(paths)
-
-
-
+        return max( score_estimate_branch(G, current, visited, depth) )
 
 
 def search_path(g, start, dest):
