@@ -3,7 +3,7 @@ import sys
 import random
 from math import sqrt, pi
 from heapq import heappush, heappop
-
+import numpy as np
 
 DEPTH=4
 ORIGIN=4516
@@ -117,6 +117,14 @@ def path_to(g, start, end):
         visited.add(n)
     return None
 
+
+def priority(in_angle):
+    def aux(edge):
+        #return -edge.distance / float(edge.cost)
+        #return diff_angle(edge.angle, in_angle)
+        return (edge.reverse is not None, -edge.distance / float(edge.cost))
+    return aux
+
 def closest(g, start, incoming_angle, timeleft):
     visited = set()
     frontier = [ (0, incoming_angle, start) ]
@@ -129,7 +137,7 @@ def closest(g, start, incoming_angle, timeleft):
         if cost > timeleft:
             # cannot reach a non visited edge on time
             return None
-        edges = sorted(n.edges, key=lambda edge:diff_angle(edge.angle, in_angle))
+        edges = sorted(n.edges, key=priority(in_angle))
         for edge in edges:
             if cost + edge.cost <= timeleft:
                 # we can take this edge
@@ -155,17 +163,20 @@ def traverse(g, cars):
                     car.follow_path(path)
     return cars
 
-
 def search():
     m = 0
+    runs = []
     while True:
         g = parse()
         start_point_ids = [ random.randint(0, len(g.nodes)) for i in range(7) ] + [ ORIGIN ]
         (score, paths) = run(g,start_point_ids)
+        runs.append(score)
+        arr = np.array(runs)
+        print arr.mean(), arr.std(), np.median(arr), len(runs)
         if score > m:
             m = score
             print start_point_ids, m
-            submit(paths, "output.txt")
+            submit(paths, "output3.txt")
 
 
 def run(g, start_point_ids):
@@ -181,7 +192,12 @@ def run(g, start_point_ids):
         path = path_to(g, origin, start_point)
         car.follow_path(path)
         assert car.position == start_point
-    cars = traverse(g, cars)
+    traverse(g, cars[0:7])
+    traverse(g, cars[7:8])
+    """
+    for i in range(7):
+        traverse(g, cars[i:i+1])
+    """
     score = sum(car.distance for car in cars)
     return score, [car.path for car in cars]
 
