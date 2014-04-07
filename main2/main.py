@@ -39,7 +39,7 @@ class Car(object):
         edge.visit()
 
     def go_to(self, g, dest):
-        path = path_to(g, self.position, dest)
+        path = path_to(self.position, dest)
         self.follow_path(path)
         assert self.position == dest
 
@@ -53,8 +53,7 @@ class Car(object):
 
 def choose_best_path(g, car):
     """ returns the best score, with the matching edge. """
-    #return browse_candidates(g, car.position, car.timeleft, set())
-    return closest(g, car.position, car.angle, car.timeleft)
+    return closest(car.position, car.angle, car.timeleft)
 
 
 
@@ -93,7 +92,7 @@ def compute_path(distances, cost, start, stop):
                     return compute_path(distances, cost - edge.cost, start, node) + [ edge ]
         raise "could not find path"
 
-def djikstra(g, start, end):
+def djikstra(start, end):
     visited = set()
     frontier = [ ( (0,0), start) ]
     distances = {}
@@ -111,8 +110,11 @@ def djikstra(g, start, end):
         visited.add(n)
     return None
 
-def path_to(g, start, end):
-    sol = djikstra(g, start, end)
+def path_to(start, end):
+    """
+    Return the shortest path from start to end.
+    """
+    sol = djikstra(start, end)
     if sol is None:
         return None
     (distances, cost) = sol
@@ -129,7 +131,11 @@ def priority(in_angle):
         # return (edge.reverse is not None,)
     return aux
 
-def closest(g, start, incoming_angle, timeleft):
+def closest(start, incoming_angle, timeleft):
+    """
+    Find the closest non-visited street
+    with a priority described in traverse
+    """
     visited = set()
     frontier = [ (0, 0, incoming_angle, start) ]
     distances = {}
@@ -157,6 +163,15 @@ def closest(g, start, incoming_angle, timeleft):
 
 
 def traverse(g, cars):
+    """
+    Traverse drives the car using a simple heuristic.
+    Basically drives road that have not been driven yet,
+    with a priority to taking oneway street and 
+    to turning left.
+
+    When not available, just go to the closest 
+    non-visited street.
+    """
     while any(car.timeleft > 0 and car.running for car in cars):
         for car in cars:
             if car.running and car.timeleft > 0:
@@ -207,8 +222,9 @@ def run(g, start_point_ids):
         start_point = g[start_point_id]
         car.go_to(g, start_point)
         assert car.position == start_point
-    traverse(g, cars)
+    cars = traverse(g, cars)
     #traverse(g, cars[7:8])
+    print score
     score = overall_score(cars)
     #if score > 1915312:
     from itertools import count
@@ -249,7 +265,7 @@ def find_shortcuts(g, cars,):
                 start = cur.edges[a].start
                 stop = cur.edges[b-1].stop
                 assert sum(edge.distance for edge in cur.edges[a:b]) == 0
-                section = path_to(g, start, stop)
+                section = path_to(start, stop)
                 if section:
                     assert start == section[0].start
                     assert stop == section[-1].stop
@@ -274,55 +290,71 @@ def browse_deviation(start, burnt, path_budgets, max_cost, depth=DEPTH):
         if edge not in burnt:
             budget = max_cost - edge.cost
             if edge.stop in path_budgets:
-                (distance, subpath) = path_budgets[edge.stop](budget) # distance for the remaining path given a budget
-                yield (edge.distance + distance, [edge] + subpath)
+                (distance, margin) = path_budgets[edge.stop](budget) # distance for the remaining path given a budget
+                yield (edge.distance + distance, margin, [edge])
             else:
                 possible_deviations = list(browse_deviation(edge.stop, burnt.union({edge, edge.reverse}), path_budgets, budget, depth-1))
                 if possible_deviations:
-                    (distance, suffix) = max(possible_deviations)
-                    yield (distance + edge.distance, [edge] + suffix)
+                    (distance, margin, suffix) = max(possible_deviations)
+                    yield (distance + edge.distance, margin, [edge] + suffix)
 
-"""
+
 def simple_path_budget(path):
     def aux(budget):
+        """
+        Given a budget how much
+        of a path can you run?       
+        """
         d = 0
+        travelled = 0
+        pending_travelled = 0
+        remaining = budget
         for e in path:
-            if e.cost <= budget:
-                d += e.distance
-                budget -= e.cost
+            if e.cost <= remaining:
+                remaining -= e.cost
+                pending_travelled += e.cost
+                if e.distance > 0:
+                    d += e.distance
+                    travelled += pending_travelled
+                    pending_travelled = 0
             else:
                 break
-        return d
+        return (d, budget - travelled)
     return aux
-"""
 
-def simple_path_budget(path):
-    def aux(budget):
-        subpath = []
-        for e in path:
-            if e.cost <= budget:
-                subpath.append(e)
-                budget -= e.cost
-            else:
-                break
-        return (sum(e.distance for e in subpath), subpath)
-    return aux
+def compute_margin(path, timeleft=TIME):
+    return simple_path_budget(path)(timeleft)[1]
 
 def compute_path_budgets(path):
+    """
+    Given a path, returns a dictionary
+    which for each node, return the following function
+        
+        (budget)-> distance that can be reached
+                   by following this path up to the given budget
+    
+    """
     c = {}
     for (i,e) in enumerate(path):
         c[e.start] = simple_path_budget(path[i:])
     return c
 
 def deviate_path(g, path, depth):
+    """
+    Generator on deviation opportunities\
+    Opportunities have the shape (distance, path)
+    """
+    (original_distance, original_margin) = simple_path_budget(path)(TIME)
     burnt = set(e for e in path).union(e.reverse for e in path)
     budget = TIME
     prefix_distance = 0
     prefix = []
     path_budgets = compute_path_budgets(path)
     for i,e in enumerate(path):
-        for (suffix_distance, suffix) in browse_deviation(e.start, burnt, path_budgets, budget, depth=depth):
-            yield (prefix_distance + suffix_distance, prefix + suffix)
+        for (suffix_distance, margin, suffix) in browse_deviation(e.start, burnt, path_budgets, budget, depth=depth):
+            distance = prefix_distance + suffix_distance
+            if (distance, margin) > (original_distance, original_margin):
+                yield (distance, margin, prefix + suffix)
         # we can't go backward in the path
         if e.start in path_budgets:
             del path_budgets[e.start]
@@ -334,18 +366,40 @@ def valid_path(path):
     for (a,b) in zip(path, path[1:]):
         assert b.start == a.stop
 
-def extend_with_path(path, former_path):
+def extend_with_path(path, former_path, budget):
+    """
+    Given 2 interecting paths, extends in place
+    the first one with the second one until
+    the budget is depleted.
+    """
     intersection = path[-1].stop
     intersection_last_idx = -1
+    for edge in path:
+        budget -= edge.cost
     for (i,e) in enumerate(former_path):
         if e.start == intersection:
             intersection_last_idx = i
     assert intersection_last_idx != -1
-    path += former_path[intersection_last_idx:]
-
-
+    segment = []
+    for edge in former_path[intersection_last_idx:]:
+        if edge.cost <= budget:
+            segment.append(edge)
+            budget -= edge.cost
+            if edge.distance > 0:
+                path+=segment
+                segment = []
+            
+        else:
+            break
 
 def deviate_postprocess(g, cars, depth):
+    """
+    Given a solution (cars),
+    modifies it in place in a better solution by 
+    looping on cars and searching for
+    opportunities to locally deviate from
+    the original trajectory.
+    """
     for car_id in range(8):
         print "optimizing car %i" % car_id,
         former_score = overall_score(cars)
@@ -359,32 +413,31 @@ def deviate_postprocess(g, cars, depth):
                 new_cars[i].follow_path(cars[i].edges)
         target = sum(e.distance for e in cars[car_id].edges)
         deviations = list(deviate_path(g, cars[car_id].edges, depth))
+        new_score = overall_score(cars)
         if deviations:
-            (d, path) = max(deviations)
+            (d, margin, path) = max(deviations)
+            extend_with_path(path, cars[car_id].edges, TIME)
             assert d == sum(e.distance for e in path)
-            valid_path(path)
             new_cars[car_id].follow_path(path)
             cars[:] = new_cars[:]
             new_score = overall_score(cars)
+            print new_score - former_score    
         else:
             print "no deviations"
-        print new_score - former_score
-
-
 
 
 def postprocess(g, cars, depth):
     print "------"
     print "POSTPROCESS"
     print "Best score", overall_score(cars)
-    print "Margin", sum(car.timeleft for car in cars)
+    margin = sum(car.timeleft for car in cars)
+    print "MARGIN", margin
+    assert margin >= 0
     find_shortcuts(g, cars)
     traverse(g, cars)
     print "Ater shortcuts", overall_score(cars)
     deviate_postprocess(g, cars, depth)
     print "final", overall_score(cars)
-
-
 
 def load_solution(filepath="best.txt"):
     with open(filepath, 'r') as f:
@@ -419,26 +472,30 @@ if __name__ == '__main__':
     print (depth, input_filepath, output_filepath)
     depth = int(depth)
     solution = load_solution(input_filepath)
-    g = parse()
+    g=parse()
     cars = [
         Car(id=car_id, position=g[ORIGIN])
-            for car_id in range(8)
+        for car_id in range(8)
     ]
     for (intersections, car) in zip(solution, cars):
         for intersection in intersections[1:]:
             car.follow(car.position[g.nodes[intersection]])
-    score = overall_score(cars)
+    #traverse(g, cars)
+
     from itertools import count
     for r in count(1):
         print "Round % i" % r
+        former_score = overall_score(cars)
+        former_timeleft = sum(car.timeleft for car in cars)
         postprocess(g, cars, depth)
         new_score = overall_score(cars)
+        new_timeleft = sum(car.timeleft for car in cars)
+        total_margin = sum(compute_margin(car.edges) for car in cars)
+        print "total margin", total_margin
         submit([car.path for car in cars], output_filepath + str(new_score))
         print new_score
-        if new_score <= score:
+        if (new_score, new_timeleft) <= (former_score, former_timeleft):
             break
-        else:
-            score = new_score
     print score
     
 
