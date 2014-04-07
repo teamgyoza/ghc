@@ -4,7 +4,7 @@ import random
 from math import sqrt, pi
 from heapq import heappush, heappop
 
-DEPTH=5
+DEPTH=7
 ORIGIN=4516
 TIME=54000
 
@@ -72,20 +72,16 @@ def diff_angle(a1, a2):
 
 
 def submit(car_paths, filepath='output.txt'):
-    total_cars = 8
     source_id = 4516
     f = open(filepath, "w")
     lines = []
-    lines.append(total_cars)
-    for car_id in range(total_cars):
-        if car_id < len(car_paths):
-            lines.append(len(car_paths[car_id]))
-            for intersection in car_paths[car_id]:
-                lines.append(intersection.idx)
-        else:
-            lines.append(1)
-            lines.append(source_id)
+    lines.append(8)
+    for car_path in car_paths:
+        lines.append(len(car_path))
+        for intersection in car_path:
+            lines.append(intersection.idx)
     f.write('\n'.join(map(str, lines)))
+
 
 
 def compute_path(distances, cost, start, stop):
@@ -216,8 +212,15 @@ def run(g, start_point_ids):
     #traverse(g, cars[7:8])
     score = overall_score(cars)
     #if score > 1915312:
-    postprocess(g, cars)
-    score = overall_score(cars)
+    from itertools import count
+    for r in count(1):
+        print "Round % i", r
+        postprocess(g, cars)
+        new_score = overall_score(cars)
+        if new_score <= score:
+            break
+        else:
+            score = new_score
     return score, [car.path for car in cars]
 
 #--------------------------
@@ -348,7 +351,7 @@ def deviate_postprocess(g, cars):
         print "optimizing car %i" % car_id
         g.reset()
         new_cars = [
-            Car(id=car_id, position=g[ORIGIN])
+            Car(id=i, position=g[ORIGIN])
             for i in range(8)
         ]
         for i in range(8):
@@ -361,9 +364,11 @@ def deviate_postprocess(g, cars):
             assert d == sum(e.distance for e in path)
             valid_path(path)
             new_cars[car_id].follow_path(path)
-            print "d, target, outcome", d, target, sum(new_car.distance for new_car in new_cars) - sum(car.distance for car in cars)
+            cars[:] = new_cars[:]
         else:
             print "no deviations"
+
+
 
 
 def postprocess(g, cars,):
@@ -377,15 +382,62 @@ def postprocess(g, cars,):
     deviate_postprocess(g, cars)
     print "final", overall_score(cars)
 
+
+
+def load_solution(filepath="best.txt"):
+    with open(filepath, 'r') as f:
+        lines = [ int(line.strip())  for line in f.readlines() ][1:]
+        line_it = iter(lines)
+        car_paths = []
+        for i in range(8):
+            count = line_it.next()
+            path = []
+            for c in range(count):
+                path.append(line_it.next())
+            car_paths.append(path)
+        return car_paths
+
+def main():
+    solution = load_solution()
+
+def score(g, car_paths):
+    g.reset()
+    for car_path in car_paths:
+        cars = [
+            Car(id=car_id, position=g[ORIGIN])
+                for car_id in range(8)
+        ]
+    for (car, car_path) in zip(cars, car_paths):
+        car.follow_path(car_path)
+    return sum(car.distance for car in cars)
+
+if __name__ == '__main__':
+    solution = load_solution("best2.txt")
+    g = parse()
+    cars = [
+        Car(id=car_id, position=g[ORIGIN])
+            for car_id in range(8)
+    ]
+    for (intersections, car) in zip(solution, cars):
+        for intersection in intersections[1:]:
+            car.follow(car.position[g.nodes[intersection]])
+    score = overall_score(cars)
+    from itertools import count
+    for r in count(1):
+        print "Round % i" % r
+        postprocess(g, cars)
+        new_score = overall_score(cars)
+        submit([car.path for car in cars], "postproces-2s%i.txt" % r)
+        print new_score
+        if new_score <= score:
+            break
+        else:
+            score = new_score
+    print score(g, [car.edges for car in cars ])
+    submit([car.path for car in cars], "postprocess.txt")
+
     
-            
-            
 
 
 #if __name__ == '__main__':
-#   g = parse()
-#    print run(g, [4645, 10137, 6872, 9290, 4470, 2101, 1847, 4516])[0]
-
-
-if __name__ == '__main__':
-    print search()
+#    print search()
