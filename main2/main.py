@@ -4,11 +4,9 @@ import random
 from math import sqrt, pi
 from heapq import heappush, heappop
 
-DEPTH=7
+DEPTH=9
 ORIGIN=4516
 TIME=54000
-
-# 1898984.09031 1.30129733585 18502 1925016
 
 class Car(object):
 
@@ -72,6 +70,7 @@ def diff_angle(a1, a2):
 
 
 def submit(car_paths, filepath='output.txt'):
+    print "writing to ", filepath
     source_id = 4516
     f = open(filepath, "w")
     lines = []
@@ -315,14 +314,14 @@ def compute_path_budgets(path):
         c[e.start] = simple_path_budget(path[i:])
     return c
 
-def deviate_path(g, path):
+def deviate_path(g, path, depth):
     burnt = set(e for e in path).union(e.reverse for e in path)
     budget = TIME
     prefix_distance = 0
     prefix = []
     path_budgets = compute_path_budgets(path)
     for i,e in enumerate(path):
-        for (suffix_distance, suffix) in browse_deviation(e.start, burnt, path_budgets, budget, depth=DEPTH):
+        for (suffix_distance, suffix) in browse_deviation(e.start, burnt, path_budgets, budget, depth=depth):
             yield (prefix_distance + suffix_distance, prefix + suffix)
         # we can't go backward in the path
         if e.start in path_budgets:
@@ -346,9 +345,10 @@ def extend_with_path(path, former_path):
 
 
 
-def deviate_postprocess(g, cars):
+def deviate_postprocess(g, cars, depth):
     for car_id in range(8):
-        print "optimizing car %i" % car_id
+        print "optimizing car %i" % car_id,
+        former_score = overall_score(cars)
         g.reset()
         new_cars = [
             Car(id=i, position=g[ORIGIN])
@@ -358,20 +358,22 @@ def deviate_postprocess(g, cars):
             if i != car_id:
                 new_cars[i].follow_path(cars[i].edges)
         target = sum(e.distance for e in cars[car_id].edges)
-        deviations = list(deviate_path(g, cars[car_id].edges))
+        deviations = list(deviate_path(g, cars[car_id].edges, depth))
         if deviations:
             (d, path) = max(deviations)
             assert d == sum(e.distance for e in path)
             valid_path(path)
             new_cars[car_id].follow_path(path)
             cars[:] = new_cars[:]
+            new_score = overall_score(cars)
         else:
             print "no deviations"
+        print new_score - former_score
 
 
 
 
-def postprocess(g, cars,):
+def postprocess(g, cars, depth):
     print "------"
     print "POSTPROCESS"
     print "Best score", overall_score(cars)
@@ -379,7 +381,7 @@ def postprocess(g, cars,):
     find_shortcuts(g, cars)
     traverse(g, cars)
     print "Ater shortcuts", overall_score(cars)
-    deviate_postprocess(g, cars)
+    deviate_postprocess(g, cars, depth)
     print "final", overall_score(cars)
 
 
@@ -412,7 +414,11 @@ def score(g, car_paths):
     return sum(car.distance for car in cars)
 
 if __name__ == '__main__':
-    solution = load_solution("best2.txt")
+    import sys
+    (depth, input_filepath, output_filepath) = sys.argv[1:]
+    print (depth, input_filepath, output_filepath)
+    depth = int(depth)
+    solution = load_solution(input_filepath)
     g = parse()
     cars = [
         Car(id=car_id, position=g[ORIGIN])
@@ -425,17 +431,15 @@ if __name__ == '__main__':
     from itertools import count
     for r in count(1):
         print "Round % i" % r
-        postprocess(g, cars)
+        postprocess(g, cars, depth)
         new_score = overall_score(cars)
-        submit([car.path for car in cars], "postproces-2s%i.txt" % r)
+        submit([car.path for car in cars], output_filepath + str(new_score))
         print new_score
         if new_score <= score:
             break
         else:
             score = new_score
-    print score(g, [car.edges for car in cars ])
-    submit([car.path for car in cars], "postprocess.txt")
-
+    print score
     
 
 
