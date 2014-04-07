@@ -12,7 +12,21 @@ from random import choice
 from parse import parse, submit
 
 
-DEPTH=7
+DEPTH=2
+
+
+def point(G, n):
+    node = G.node[n]
+    x = node['x']
+    y = node['y']
+    return complex(x,y)
+
+def angle(G, edge):
+    start = point(G, edge['start'])
+    stop = point(G, edge['stop'])
+    vec = stop - start
+    return phase(vec)
+
 
 def traverse(G, T, C, start_points):
     intersections = [ [] for i in range(8) ]
@@ -21,7 +35,7 @@ def traverse(G, T, C, start_points):
     timeleft = [T] * 8
 
     while any(timeleft[i] > 0 for i in range(C)):
-        print timeleft
+        print sum(timeleft)
         for i in range(C):
             if timeleft[i] > 0:
                 edge = choose(G, current[i], timeleft[i])
@@ -42,7 +56,7 @@ def traverse(G, T, C, start_points):
                 except KeyError:
                     pass
 
-                intersections[i].append(current[i])
+                intersections[i].append(stop)
 
     distance = sum(distance)
     return distance, intersections
