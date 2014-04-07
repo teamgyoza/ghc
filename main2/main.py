@@ -4,10 +4,11 @@ import random
 from math import sqrt, pi
 from heapq import heappush, heappop
 
-DEPTH=4
+DEPTH=5
 ORIGIN=4516
 TIME=54000
 
+# 1898984.09031 1.30129733585 18502 1925016
 
 class Car(object):
 
@@ -92,7 +93,6 @@ def compute_path(distances, cost, start, stop):
         return []
     else:
         for (node,edge) in stop.invert_neighbors.items():
-            #print distances
             if node in distances:
                 if edge.cost + distances[node] == cost:
                     return compute_path(distances, cost - edge.cost, start, node) + [ edge ]
@@ -100,10 +100,10 @@ def compute_path(distances, cost, start, stop):
 
 def djikstra(g, start, end):
     visited = set()
-    frontier = [ (0, start) ]
+    frontier = [ ( (0,0), start) ]
     distances = {}
     while frontier:
-        (cost, n) = heappop(frontier)
+        ((cost, count), n) = heappop(frontier)
         if n in visited:
             continue
         if n == end:
@@ -111,7 +111,7 @@ def djikstra(g, start, end):
         distances[n] = cost
         for edge in n.edges:
             if edge.stop not in visited:
-                candidate = (cost + edge.cost, edge.stop)
+                candidate = ((cost + edge.cost, count+edge.visits), edge.stop)
                 heappush(frontier, candidate)
         visited.add(n)
     return None
@@ -129,15 +129,17 @@ def priority(in_angle):
     def aux(edge):
         #return -edge.distance / float(edge.cost)
         #return diff_angle(edge.angle, in_angle)
-        return (edge.reverse is not None, -edge.distance / float(edge.cost))
+        # diff_angle(in_angle, edge.angle) 
+        return (edge.reverse is not None, -edge.distance / float(edge.cost), )
+        # return (edge.reverse is not None,)
     return aux
 
 def closest(g, start, incoming_angle, timeleft):
     visited = set()
-    frontier = [ (0, incoming_angle, start) ]
+    frontier = [ (0, 0, incoming_angle, start) ]
     distances = {}
     while frontier:
-        (cost, in_angle, n) = heappop(frontier)
+        (cost, count, in_angle, n) = heappop(frontier)
         if n in visited:
             continue
         distances[n] = cost
@@ -152,7 +154,7 @@ def closest(g, start, incoming_angle, timeleft):
                     return compute_path(distances, cost, start, n) + [ edge ]
                 else:
                     if edge.stop not in visited:
-                        candidate = (cost + edge.cost, edge.angle, edge.stop)
+                        candidate = (cost + edge.cost, count + edge.visits, edge.angle, edge.stop)
                         # print candidate
                         heappush(frontier, candidate)
         visited.add(n)
@@ -180,20 +182,21 @@ def search():
     runs = []
     times = []
     g = parse()
+    # 8551, 4598, 6919, 3296, 4277, 9557, 1874, 4516]#
     while True:
         start = time.time()
         g.reset()
         start_point_ids = [ random.randint(0, len(g.nodes) - 1) for i in range(7) ] + [ ORIGIN ]
+        # random.start_point_ids = [ 8551, 4598, 6919, 3296, 4277, 9557, 1874, 4516]
         (score, paths) = run(g,start_point_ids)
         end = time.time()
         runs.append(score)
         times.append(end-start)
-        #if len(runs) % 10 == 0:
-        print mean(runs), mean(times), len(runs)
+        print mean(runs), mean(times), len(runs), m
         if score > m:
             m = score
             print start_point_ids, m
-            submit(paths, "test.txt")
+            submit(paths, "testc.txt")
 
 def overall_score(cars):
     return sum(car.distance for car in cars)
@@ -210,10 +213,11 @@ def run(g, start_point_ids):
         car.go_to(g, start_point)
         assert car.position == start_point
     traverse(g, cars)
+    #traverse(g, cars[7:8])
     score = overall_score(cars)
-    if score > 1915312:
-        postprocess(g, cars)
-        score = overall_score(cars)
+    #if score > 1915312:
+    postprocess(g, cars)
+    score = overall_score(cars)
     return score, [car.path for car in cars]
 
 #--------------------------
@@ -256,18 +260,121 @@ def find_shortcuts(g, cars,):
         assert cur.edges[0].start == new_car_path[0].start
         assert cur.edges[-1].stop == new_car_path[-1].stop
         new_cars[car_id].follow_path(new_car_path)
-        #print overall_score(new_cars)
         cars[:] = new_cars[:]
+
+
+def browse_deviation(start, burnt, path_budgets, max_cost, depth=DEPTH):
+    if depth == 0:
+        return
+    if max_cost == 0:
+        return
+    for edge in start.edges:
+        if edge not in burnt:
+            budget = max_cost - edge.cost
+            if edge.stop in path_budgets:
+                (distance, subpath) = path_budgets[edge.stop](budget) # distance for the remaining path given a budget
+                yield (edge.distance + distance, [edge] + subpath)
+            else:
+                possible_deviations = list(browse_deviation(edge.stop, burnt.union({edge, edge.reverse}), path_budgets, budget, depth-1))
+                if possible_deviations:
+                    (distance, suffix) = max(possible_deviations)
+                    yield (distance + edge.distance, [edge] + suffix)
+
+"""
+def simple_path_budget(path):
+    def aux(budget):
+        d = 0
+        for e in path:
+            if e.cost <= budget:
+                d += e.distance
+                budget -= e.cost
+            else:
+                break
+        return d
+    return aux
+"""
+
+def simple_path_budget(path):
+    def aux(budget):
+        subpath = []
+        for e in path:
+            if e.cost <= budget:
+                subpath.append(e)
+                budget -= e.cost
+            else:
+                break
+        return (sum(e.distance for e in subpath), subpath)
+    return aux
+
+def compute_path_budgets(path):
+    c = {}
+    for (i,e) in enumerate(path):
+        c[e.start] = simple_path_budget(path[i:])
+    return c
+
+def deviate_path(g, path):
+    burnt = set(e for e in path).union(e.reverse for e in path)
+    budget = TIME
+    prefix_distance = 0
+    prefix = []
+    path_budgets = compute_path_budgets(path)
+    for i,e in enumerate(path):
+        for (suffix_distance, suffix) in browse_deviation(e.start, burnt, path_budgets, budget, depth=DEPTH):
+            yield (prefix_distance + suffix_distance, prefix + suffix)
+        # we can't go backward in the path
+        if e.start in path_budgets:
+            del path_budgets[e.start]
+        budget -= e.cost
+        prefix.append(e)
+        prefix_distance += e.distance
+
+def valid_path(path):
+    for (a,b) in zip(path, path[1:]):
+        assert b.start == a.stop
+
+def extend_with_path(path, former_path):
+    intersection = path[-1].stop
+    intersection_last_idx = -1
+    for (i,e) in enumerate(former_path):
+        if e.start == intersection:
+            intersection_last_idx = i
+    assert intersection_last_idx != -1
+    path += former_path[intersection_last_idx:]
+
+
+
+def deviate_postprocess(g, cars):
+    for car_id in range(8):
+        print "optimizing car %i" % car_id
+        g.reset()
+        new_cars = [
+            Car(id=car_id, position=g[ORIGIN])
+            for i in range(8)
+        ]
+        for i in range(8):
+            if i != car_id:
+                new_cars[i].follow_path(cars[i].edges)
+        target = sum(e.distance for e in cars[car_id].edges)
+        deviations = list(deviate_path(g, cars[car_id].edges))
+        if deviations:
+            (d, path) = max(deviations)
+            assert d == sum(e.distance for e in path)
+            valid_path(path)
+            new_cars[car_id].follow_path(path)
+            print "d, target, outcome", d, target, sum(new_car.distance for new_car in new_cars) - sum(car.distance for car in cars)
+        else:
+            print "no deviations"
+
 
 def postprocess(g, cars,):
     print "------"
-    print "postprocess"
+    print "POSTPROCESS"
     print "Best score", overall_score(cars)
-    print "margin", sum(car.timeleft for car in cars)
+    print "Margin", sum(car.timeleft for car in cars)
     find_shortcuts(g, cars)
-    print "margin", sum(car.timeleft for car in cars)
-    print "After shorcuts score", overall_score(cars)
     traverse(g, cars)
+    print "Ater shortcuts", overall_score(cars)
+    deviate_postprocess(g, cars)
     print "final", overall_score(cars)
 
     
