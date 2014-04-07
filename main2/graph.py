@@ -6,7 +6,7 @@ b = 111803.550422
 
 class Edge(object):
 
-    __slots__ = ('idx', 'distance', 'cost', 'original_distance','start', 'stop', 'efficiency', 'reverse', 'visits', 'angle')
+    __slots__ = ('idx', 'distance', 'cost', 'original_distance','start', 'stop', 'cars', 'efficiency', 'reverse', 'visits', 'angle')
     def __init__(self, idx, start, stop, distance, cost, ):
         self.idx = idx
         self.distance = distance
@@ -16,6 +16,7 @@ class Edge(object):
         self.stop = stop
         self.reverse = None
         self.visits = 0
+        self.cars = set()
         self.angle = phase(self.stop.position - self.start.position)
         self.efficiency = 1
 
@@ -24,8 +25,10 @@ class Edge(object):
         self.visits = 0
         self.distance = self.original_distance
         self.efficiency = 1
+        self.cars = set()
 
-    def visit(self,):
+    def visit(self, car):
+        self.cars.add(car)
         edges = [ self ]
         if self.reverse:
             edges.append(self.reverse)
@@ -85,6 +88,7 @@ class Graph(object):
 
     def __getitem__(self, n):
         return self.nodes[n]
+
 
 def parse():
     g = Graph()
