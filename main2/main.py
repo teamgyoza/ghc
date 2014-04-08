@@ -499,18 +499,21 @@ def optimize_postprocessing(depth, input_filepath, output_filepath):
             break
     print score
 
-if __name__ == '__main__':
-    usage = """
+def show_help():
+    print """
     Usage:
         main.py postprocess <depth> <input_filepath> <output_filepath>
         main.py search <output_filepath>
         main.py score <solution_filepath>
     """
-    command_name, args = sys.argv[1], sys.argv[2:]
-    assert command_name in ['postprocess', 'search', 'score']
-    command = {
-        'postprocess': optimize_postprocessing,
-        'search': search,
-        'score': lambda f: score_solution(load_solution(f))
-    }.get(sys.argv[1])
-    command(*sys.argv[2:])
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        show_help()
+    else:
+        command_name, args = sys.argv[1], sys.argv[2:]
+        {
+            'postprocess': optimize_postprocessing,
+            'search': search,
+            'score': lambda f: score_solution(load_solution(f))
+        }.get(command_name, show_help)(*args)
