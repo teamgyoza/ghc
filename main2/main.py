@@ -177,7 +177,7 @@ def mean(l):
 
 import time
 
-def search():
+def search(output_filepath):
     m = 0
     runs = []
     times = []
@@ -196,7 +196,7 @@ def search():
         if score > m:
             m = score
             print start_point_ids, m
-            submit(paths, "testc.txt")
+            submit(paths, output_filepath)
 
 def overall_score(cars):
     return sum(car.distance for car in cars)
@@ -213,19 +213,19 @@ def run(g, start_point_ids):
         car.go_to(g, start_point)
         assert car.position == start_point
     cars = traverse(g, cars)
-    #traverse(g, cars[7:8])
-    print score
     score = overall_score(cars)
     #if score > 1915312:
+    """
     from itertools import count
     for r in count(1):
         print "Round % i", r
-        postprocess(g, cars)
+        postprocess(g, cars, 10)
         new_score = overall_score(cars)
         if new_score <= score:
             break
         else:
             score = new_score
+    """
     return score, [car.path for car in cars]
 
 #--------------------------
@@ -446,8 +446,17 @@ def load_solution(filepath="best.txt"):
             car_paths.append(path)
         return car_paths
 
-def main():
-    solution = load_solution()
+def get_intersections(path):
+    return [ start_node.neighbors[stop_node]
+             for start_node, stop_node in zip(path[:-1], path[1:])]
+
+def score_solution(solution):
+    g=parse()
+    car_paths = [get_intersections([g[node_id] for node_id in node_ids])
+                 for node_ids in solution]
+    solution_score = score(g, car_paths)
+    print "score:", solution_score
+    return solution_score
 
 def score(g, car_paths):
     g.reset()
@@ -458,12 +467,9 @@ def score(g, car_paths):
         ]
     for (car, car_path) in zip(cars, car_paths):
         car.follow_path(car_path)
-    return sum(car.distance for car in cars)
+    return overall_score(cars)
 
-if __name__ == '__main__':
-    import sys
-    (depth, input_filepath, output_filepath) = sys.argv[1:]
-    print (depth, input_filepath, output_filepath)
+def optimize_postprocessing(depth, input_filepath, output_filepath):
     depth = int(depth)
     solution = load_solution(input_filepath)
     g=parse()
@@ -492,8 +498,19 @@ if __name__ == '__main__':
         if (new_score, new_timeleft) <= (former_score, former_timeleft):
             break
     print score
-    
 
-
-#if __name__ == '__main__':
-#    print search()
+if __name__ == '__main__':
+    usage = """
+    Usage:
+        main.py postprocess <depth> <input_filepath> <output_filepath>
+        main.py search <output_filepath>
+        main.py score <solution_filepath>
+    """
+    command_name, args = sys.argv[1], sys.argv[2:]
+    assert command_name in ['postprocess', 'search', 'score']
+    command = {
+        'postprocess': optimize_postprocessing,
+        'search': search,
+        'score': lambda f: score_solution(load_solution(f))
+    }.get(sys.argv[1])
+    command(*sys.argv[2:])
