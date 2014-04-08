@@ -271,20 +271,18 @@ def find_shortcuts(g, cars,):
         cars[:] = new_cars[:]
 
 
-def browse_deviation(start, burnt, path_budgets, max_cost, depth=DEPTH):
+def browse_deviation(start, burnt, path_budgets, budget, depth=DEPTH):
     if depth == 0:
         return
-    if max_cost == 0:
-        return
     for edge in start.edges:
-        if edge not in burnt:
-            budget = max_cost - edge.cost
+        if edge not in burnt and edge.cost <= budget:
+            new_budget = budget - edge.cost
             if edge.stop in path_budgets:
                 # distance for the remaining path given a budget
-                (distance, margin) = path_budgets[edge.stop](budget) 
+                (distance, margin) = path_budgets[edge.stop](new_budget) 
                 yield (edge.distance + distance, margin, [edge])
             else:
-                possible_deviations = list(browse_deviation(edge.stop, burnt.union({edge, edge.reverse}), path_budgets, budget, depth-1))
+                possible_deviations = list(browse_deviation(edge.stop, burnt.union({edge, edge.reverse}), path_budgets, new_budget, depth-1))
                 if possible_deviations:
                     (distance, margin, suffix) = max(possible_deviations)
                     yield (distance + edge.distance, margin, [edge] + suffix)
