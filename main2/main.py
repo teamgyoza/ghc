@@ -1,4 +1,4 @@
-from graph import parse
+from graph import *
 import sys
 import random
 from itertools import count
@@ -163,7 +163,7 @@ def path_to(start, end):
 
 def priority(in_angle):
     def aux(edge):
-        return (edge.reverse is not None, -edge.distance / float(edge.cost), )
+        return (edge.difficulty, -edge.distance / float(edge.cost), )
     return aux
 
 def closest(start, incoming_angle, timeleft):
@@ -172,10 +172,10 @@ def closest(start, incoming_angle, timeleft):
     with a priority described in traverse
     """
     visited = set()
-    frontier = [ (0, 0, incoming_angle, start) ]
+    frontier = [ (0, 0, 0, incoming_angle, start) ]
     distances = {}
     while frontier:
-        (cost, count, in_angle, n) = heappop(frontier)
+        (cost, difficulty, count, in_angle, n) = heappop(frontier)
         if n in visited:
             continue
         distances[n] = cost
@@ -190,7 +190,8 @@ def closest(start, incoming_angle, timeleft):
                     return compute_path(distances, cost, start, n) + [ edge ]
                 else:
                     if edge.stop not in visited:
-                        candidate = (cost + edge.cost, count + edge.visits, edge.angle, edge.stop)
+                        difficulty = max(e2.difficulty for e2 in edge.stop.edges)
+                        candidate = (cost + edge.cost, difficulty, count + edge.visits, edge.angle, edge.stop)
                         # print candidate
                         heappush(frontier, candidate)
         visited.add(n)
@@ -226,6 +227,9 @@ def search(output_filepath):
     runs = []
     times = []
     g = parse()
+    print "compute_difficulty"
+    g.compute_difficulty()
+    print "done"
     # 8551, 4598, 6919, 3296, 4277, 9557, 1874, 4516]#
     while True:
         start = time.time()
@@ -240,7 +244,7 @@ def search(output_filepath):
         if score > m:
             m = score
             print start_point_ids, m
-            submit(path_to_intersections(paths), output_filepath)
+            submit(paths, output_filepath)
 
 def overall_score(cars):
     return sum(car.distance for car in cars)
@@ -258,7 +262,7 @@ def run(g, start_point_ids):
         assert car.position == start_point
     cars = traverse(g, cars)
     score = overall_score(cars)
-    return score, [car.path for car in cars]
+    return score, [car.edges for car in cars]
 
 #--------------------------
 # postprocessing
@@ -317,26 +321,29 @@ def browse_deviation(start, burnt, path_suffix_map, budget, depth=DEPTH):
         if edge.cost <= budget:
             gain = 0
             relax7_edge = 0
+            oneway_edge = 0
             if edge.idx not in burnt:
                 gain = edge.distance
                 if edge.cars == {7}:
                     relax7_edge += 1
+                if edge.reverse is None:
+                    oneway_edge += 1
             new_budget = budget - edge.cost
             new_burnt = burnt.union({edge.idx})
             if edge.stop in path_suffix_map:
                 # distance for the remaining path given a budget
                 suffix = path_suffix_map[edge.stop]
-                (distance, relax7, margin) = compute_distance_and_margin(suffix, new_budget, new_burnt) #path_suffix_map[edge.stop](new_budget, new_burnt) 
-                yield (gain + distance, relax7_edge+ relax7, margin, [edge])
+                (oneway, distance, relax7, margin) = compute_distance_and_margin(suffix, new_budget, new_burnt) #path_suffix_map[edge.stop](new_budget, new_burnt) 
+                yield (oneway + oneway_edge, gain + distance, relax7_edge+ relax7, margin, [edge])
             best_deviation = max_or_none(browse_deviation(edge.stop, new_burnt, path_suffix_map, new_budget, depth-1))
             if best_deviation:
-                (distance, relax7, margin, suffix) = best_deviation
-                yield (gain + distance,  relax7_edge + relax7, margin, [edge] + suffix)
+                (oneway, distance, relax7, margin, suffix) = best_deviation
+                yield (oneway + oneway_edge, gain + distance,  relax7_edge + relax7, margin, [edge] + suffix)
             elif budget < 100:
                 if gain == 0:
-                    yield (0, 0, budget, [])
+                    yield (0, 0, 0, budget, [])
                 else:
-                    yield (0, 0, new_budget, [])
+                    yield (0, 0, 0, new_budget, [])
 
 
 def compute_distance_and_margin(path, budget, burnt):
@@ -344,6 +351,7 @@ def compute_distance_and_margin(path, budget, burnt):
     travelled = 0
     remaining = budget
     pending_travelled = 0
+    oneway = 0
     visited = set(burnt)
     relax7 = 0
     for edge in path:
@@ -353,6 +361,8 @@ def compute_distance_and_margin(path, budget, burnt):
             if edge.idx not in visited:
                 visited.add(edge.idx)
                 if edge.distance > 0:
+                    if edge.reverse is None:
+                        oneway += 1
                     distance += edge.distance
                     travelled += pending_travelled
                     pending_travelled = 0
@@ -360,7 +370,7 @@ def compute_distance_and_margin(path, budget, burnt):
                     relax7 += 1
         else:
             break
-    return (distance, relax7, budget - travelled)
+    return (oneway, distance, relax7, budget - travelled)
 
 
 def compute_margin(path, timeleft=TIME):
@@ -376,15 +386,17 @@ def deviate_path(g, path, depth):
     prefix = []
     prefix_visited = set()
     prefix_relax7 = 0
+    prefix_oneway = 0
     path_suffix_map = {
         e.start: path[i:]
         for (i,e) in enumerate(path)
     }
     for i,edge in enumerate(path):
-        for (suffix_distance, suffix_relax7, margin, suffix) in browse_deviation(edge.start, prefix_visited, path_suffix_map, budget, depth=depth):
+        for (suffix_one_way, suffix_distance, suffix_relax7, margin, suffix) in browse_deviation(edge.start, prefix_visited, path_suffix_map, budget, depth=depth):
             distance = prefix_distance + suffix_distance
             relax7 = prefix_relax7 + suffix_relax7
-            yield (distance, relax7, margin, prefix + suffix)
+            oneway = prefix_oneway + suffix_one_way
+            yield (oneway, distance, relax7, margin, prefix + suffix)
         budget -= edge.cost
         prefix.append(edge)
         if edge.start in path_suffix_map:
@@ -392,40 +404,14 @@ def deviate_path(g, path, depth):
         if edge.idx not in prefix_visited:
             prefix_visited.add(edge.idx)
             prefix_distance += edge.distance
+            if edge.reverse is None:
+                prefix_oneway += 1
             if edge.cars == {7}:
                 prefix_relax7 += 1
 
 def assert_valid_path(path):
     for (a,b) in zip(path, path[1:]):
         assert b.start == a.stop
-
-def extend_with_path(path, former_path, budget):
-    """
-    Given 2 interecting paths, extends in place
-    the first one with the second one until
-    the budget is depleted.
-    """
-    intersection = path[-1].stop
-    intersection_last_idx = -1
-    oneway = 0
-    for edge in path:
-        budget -= edge.cost
-    for (i,e) in enumerate(former_path):
-        if e.start == intersection:
-            intersection_last_idx = i
-    assert intersection_last_idx != -1
-    segment = []
-    for edge in former_path[intersection_last_idx:]:
-        if edge.cost <= budget:
-            segment.append(edge)
-            budget -= edge.cost
-            if edge.distance > 0:
-                path+=segment
-                segment = []
-        else:
-            break
-    assert path[-1].distance > 0
-
 
 def deviate_postprocess(g, cars, depth):
     """
@@ -449,21 +435,23 @@ def deviate_postprocess(g, cars, depth):
             if i != car_id:
                 new_cars[i].follow_path(cars[i].edges)
         original_path = cars[car_id].edges
-        (former_distance, former_relax7, former_margin) = compute_distance_and_margin(original_path, TIME, {})
+        (former_one_way, former_distance, former_relax7, former_margin) = compute_distance_and_margin(original_path, TIME, {})
         best_deviation = max_or_none(deviate_path(g, original_path, depth))
         if best_deviation:
-            (d, r7, m, prefix) = best_deviation
+            (oneway, d, r7, m, prefix) = best_deviation
+            
             middle_point = prefix[-1].stop
             suffix = {
                 e.start: original_path[i:]
                 for (i,e) in enumerate(original_path)
             }.get(middle_point, [])
             new_path = prefix + suffix
-            (new_distance, new_relax7, new_margin) = compute_distance_and_margin(new_path, TIME, {})
-            print r7, new_relax7
+            (new_one_way, new_distance, new_relax7, new_margin) = compute_distance_and_margin(new_path, TIME, {})
+            print "onway",oneway, new_one_way
             new_cars[car_id].follow_path(new_path, TIME)
             assert d == new_distance
-            if (new_distance, new_relax7, new_margin) > (former_distance, former_relax7, former_margin):
+            if (new_one_way, new_distance, new_relax7, new_margin) > (former_one_way, former_distance, former_relax7, former_margin):
+                print "   one_way  :", new_one_way - former_one_way
                 print "  distance gain :", new_distance - former_distance
                 print "    margin gain :", new_margin - former_margin
                 cars = new_cars
@@ -563,9 +551,18 @@ def score_solution(g, paths):
     for (car_id, car) in enumerate(cars):
         print " margin ", car_id, ":", car.timeleft
     print " total margin ", ":", sum(car.timeleft for car in cars)
+    print "\n" * 3
     inverse_graph = defaultdict(list)
+
+    oneway_count = {False: 0, True:0}
     for edge in g.edges():
         inverse_graph[edge.stop].append(edge)
+        if edge.reverse is None or edge.start<edge.stop:
+            oneway_count[edge.reverse is None] += 1
+    print "One way overall"
+    for k,v in oneway_count.items():
+        print k,v
+
     counter_outgoing = Counter()
     counter_incoming = Counter()
     ahead_only = 0
@@ -610,9 +607,9 @@ def optimize_postprocessing(depth, input_filepath, output_filepath):
 
     for r in count(1):
         print "Round % i" % r
-        #random.shuffle(cars)
+        random.shuffle(cars)
         #sort(car.margin for car in)
-        cars.sort(key=lambda car:-car.timeleft)
+        #cars.sort(key=lambda car:-car.timeleft)
         for car in cars:
             print car.id, ":", car.timeleft
         former_score = overall_score(cars)
