@@ -306,26 +306,37 @@ def browse_deviation(start, burnt, path_suffix_map, budget, depth=DEPTH):
                 suffix = path_suffix_map[edge.stop]
                 (distance, margin) = compute_distance_and_margin(suffix, new_budget, new_burnt) #path_suffix_map[edge.stop](new_budget, new_burnt) 
                 yield (gain + distance, margin, [edge])
+            best_deviation = max_or_none(browse_deviation(edge.stop, new_burnt, path_suffix_map, new_budget, depth-1))
+            if best_deviation:
+                (distance, margin, suffix) = best_deviation
+                yield (gain + distance, margin, [edge] + suffix)
             else:
-                best_deviation = max_or_none(browse_deviation(edge.stop, new_burnt, path_suffix_map, new_budget, depth-1))
-                if best_deviation:
-                    (distance, margin, suffix) = best_deviation
-                    yield (gain + distance, margin, [edge] + suffix)
+                if gain == 0:
+                    yield (gain, budget, [])
+                else:
+                    yield (0, new_budget, [])
 
 
 def compute_distance_and_margin(path, budget, burnt):
     distance = 0
+    travelled = 0
+    remaining = budget
+    pending_travelled = 0
     visited = set(burnt)
     for edge in path:
-        if edge.cost <= budget:
-            budget -= edge.cost
+        if edge.cost <= remaining:
+            remaining -= edge.cost
+            pending_travelled += edge.cost
             if edge not in visited:
                 visited.add(edge)
                 visited.add(edge.reverse)
-                distance += edge.distance
+                if edge.distance > 0:
+                    distance += edge.distance
+                    travelled += pending_travelled
+                    pending_travelled = 0
         else:
             break
-    return (distance, budget)
+    return (distance, budget - travelled)
 
     """
     d = 0
@@ -364,7 +375,6 @@ def deviate_path(g, path, depth):
     for i,edge in enumerate(path):
         for (suffix_distance, margin, suffix) in browse_deviation(edge.start, prefix_visited, path_suffix_map, budget, depth=depth):
             distance = prefix_distance + suffix_distance
-            (a,b) = compute_distance_and_margin(prefix + suffix + path_suffix_map[suffix[-1].stop], TIME, {})
             yield (distance, margin, prefix + suffix)
         # we can't go backward in the path
         budget -= edge.cost
@@ -416,7 +426,7 @@ def deviate_postprocess(g, cars, depth):
     the original trajectory.
     """
     for car_id in range(8):
-        print "optimizing car %i" % car_id,
+        print " optimizing car %i" % car_id
         g.reset()
         new_cars = [
             Car(id=i, position=g[ORIGIN])
@@ -434,7 +444,7 @@ def deviate_postprocess(g, cars, depth):
             suffix = {
                 e.start: original_path[i:]
                 for (i,e) in enumerate(original_path)
-            }[middle_point]
+            }.get(middle_point, [])
             new_path = prefix + suffix
             (new_distance, new_margin) = compute_distance_and_margin(new_path, TIME, {})
             new_cars[car_id].follow_path(new_path, TIME)
