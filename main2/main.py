@@ -310,9 +310,9 @@ def browse_deviation(start, burnt, path_suffix_map, budget, depth=DEPTH):
             if best_deviation:
                 (distance, margin, suffix) = best_deviation
                 yield (gain + distance, margin, [edge] + suffix)
-            else:
+            elif budget < 100:
                 if gain == 0:
-                    yield (gain, budget, [])
+                    yield (0, budget, [])
                 else:
                     yield (0, new_budget, [])
 
@@ -338,23 +338,6 @@ def compute_distance_and_margin(path, budget, burnt):
             break
     return (distance, budget - travelled)
 
-    """
-    d = 0
-    travelled = 0
-    pending_travelled = 0
-    remaining = budget
-    for e in path:
-        if e.cost <= remaining:
-            remaining -= e.cost
-            pending_travelled += e.cost
-            if e.distance > 0 and e not in burnt: 
-                d += e.distance
-                travelled += pending_travelled
-                pending_travelled = 0
-        else:
-            break
-    """
-    return (d, budget - travelled)
 
 def compute_margin(path, timeleft=TIME):
     return compute_distance_and_margin(path, timeleft, set())[1]
@@ -425,13 +408,17 @@ def deviate_postprocess(g, cars, depth):
     opportunities to locally deviate from
     the original trajectory.
     """
+    print "\n"*3
     for car_id in range(8):
-        print " optimizing car %i" % car_id
+        print "-------------"
+        print " optimizing car %i" % cars[car_id].id
+        start = time.time()
         g.reset()
         new_cars = [
-            Car(id=i, position=g[ORIGIN])
+            Car(id=cars[i].id, position=g[ORIGIN])
             for i in range(8)
         ]
+
         for i in range(8):
             if i != car_id:
                 new_cars[i].follow_path(cars[i].edges)
@@ -457,6 +444,8 @@ def deviate_postprocess(g, cars, depth):
                 print "no deviations"
         else:
             print "no deviations"
+        end = time.time()
+        print "took ", (end-start)
     return cars
 
 
