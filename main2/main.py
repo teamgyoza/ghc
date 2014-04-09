@@ -2,6 +2,7 @@ from graph import parse
 import sys
 import random
 from itertools import count
+from collections import Counter, defaultdict
 from math import sqrt, pi
 from heapq import heappush, heappop
 
@@ -297,10 +298,10 @@ def browse_deviation(start, burnt, path_suffix_map, budget, depth=DEPTH):
     for edge in start.edges:
         if edge.cost <= budget:
             gain = 0
-            if edge not in burnt:
+            if edge.idx not in burnt:
                 gain = edge.distance
             new_budget = budget - edge.cost
-            new_burnt = burnt.union({edge, edge.reverse})
+            new_burnt = burnt.union({edge.idx})
             if edge.stop in path_suffix_map:
                 # distance for the remaining path given a budget
                 suffix = path_suffix_map[edge.stop]
@@ -327,9 +328,8 @@ def compute_distance_and_margin(path, budget, burnt):
         if edge.cost <= remaining:
             remaining -= edge.cost
             pending_travelled += edge.cost
-            if edge not in visited:
-                visited.add(edge)
-                visited.add(edge.reverse)
+            if edge.idx not in visited:
+                visited.add(edge.idx)
                 if edge.distance > 0:
                     distance += edge.distance
                     travelled += pending_travelled
@@ -359,14 +359,12 @@ def deviate_path(g, path, depth):
         for (suffix_distance, margin, suffix) in browse_deviation(edge.start, prefix_visited, path_suffix_map, budget, depth=depth):
             distance = prefix_distance + suffix_distance
             yield (distance, margin, prefix + suffix)
-        # we can't go backward in the path
         budget -= edge.cost
         prefix.append(edge)
-        if edge.start in prefix_visited:
-            del path_suffix_map[e.start]
-        if edge not in prefix_visited:
-            prefix_visited.add(edge)
-            prefix_visited.add(edge.reverse)
+        if edge.start in path_suffix_map:
+            del path_suffix_map[edge.start]
+        if edge.idx not in prefix_visited:
+            prefix_visited.add(edge.idx)
             prefix_distance += edge.distance
 
 def assert_valid_path(path):
@@ -502,13 +500,42 @@ def score_solution(g, paths):
     print "--------------------"
     for (car_id, car) in enumerate(cars):
         print " marginal ", car_id, ":", car.marginal_score()
-
+    inverse_graph = defaultdict(list)
+    for edge in g.edges():
+        inverse_graph[edge.stop].append(edge)
+    counter_outgoing = Counter()
+    counter_incoming = Counter()
+    ahead_only = 0
+    for node in g.nodes:
+        counter_outgoing[len(node.edges)] += 1
+        counter_incoming[len(inverse_graph[node])] += 1
+        if len(node.edges) == len(inverse_graph[node]) == 1:
+            assert node.edges[0] != inverse_graph[node][0].reverse # no dead ends
+            ahead_only += 1
+            #print node.edges[0], inverse_graph[node][0]
+    print "\n"*3
+    print "Number of possible exit per intersection"
+    for k,v in counter_outgoing.items():
+        print k, v
+    print "\n"*3
+    print "Number of possible entry per intersection"
+    for k,v in counter_incoming.items():
+        print k, v
+    print "\n"*3
+    print "Number of dead ends"
+    print 0
+    print "\n"*3
+    print "Number of ahead only"
+    print ahead_only
+    print "Max length", sum(e.distance for e in g.edges() if e.reverse < e)
+    print "Number of nodes", len(g.nodes)
+    
 
 def optimize_postprocessing(depth, input_filepath, output_filepath):
     depth = int(depth)
     g=parse()
     paths = load_solution(g, input_filepath)
-    print "total length", sum(e.distance for e in g.edges() if e.reverse < e)
+
     cars = [
         Car(id=car_id, position=g[ORIGIN])
         for car_id in range(8)
@@ -527,7 +554,8 @@ def optimize_postprocessing(depth, input_filepath, output_filepath):
         total_margin = sum(compute_margin(car.edges) for car in cars)
         print new_score
         if (new_score, new_timeleft) <= (former_score, former_timeleft):
-            break
+            print "Increasing depth", depth
+            depth += 1
         else:
             print "New Score ", new_score
             submit([car.edges for car in cars], output_filepath + str(new_score))
