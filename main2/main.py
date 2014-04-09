@@ -113,6 +113,24 @@ def compute_path(distances, cost, start, stop):
                     return compute_path(distances, cost - edge.cost, start, node) + [ edge ]
         raise "could not find path"
 
+def djikstra_set(start, A):
+    visited = set()
+    frontier = [ ( (0,0), start) ]
+    distances = {}
+    while frontier:
+        ((cost, count), n) = heappop(frontier)
+        if n in visited:
+            continue
+        if n in A:
+            return (cost, n)
+        distances[n] = cost
+        for edge in n.edges:
+            if edge.stop not in visited:
+                candidate = ((cost + edge.cost, count+edge.visits), edge.stop)
+                heappush(frontier, candidate)
+        visited.add(n)
+    return None
+
 def djikstra(start, end):
     visited = set()
     frontier = [ ( (0,0), start) ]
@@ -298,24 +316,27 @@ def browse_deviation(start, burnt, path_suffix_map, budget, depth=DEPTH):
     for edge in start.edges:
         if edge.cost <= budget:
             gain = 0
+            relax7_edge = 0
             if edge.idx not in burnt:
                 gain = edge.distance
+                if edge.cars == {7}:
+                    relax7_edge += 1
             new_budget = budget - edge.cost
             new_burnt = burnt.union({edge.idx})
             if edge.stop in path_suffix_map:
                 # distance for the remaining path given a budget
                 suffix = path_suffix_map[edge.stop]
-                (distance, margin) = compute_distance_and_margin(suffix, new_budget, new_burnt) #path_suffix_map[edge.stop](new_budget, new_burnt) 
-                yield (gain + distance, margin, [edge])
+                (distance, relax7, margin) = compute_distance_and_margin(suffix, new_budget, new_burnt) #path_suffix_map[edge.stop](new_budget, new_burnt) 
+                yield (gain + distance, relax7_edge+ relax7, margin, [edge])
             best_deviation = max_or_none(browse_deviation(edge.stop, new_burnt, path_suffix_map, new_budget, depth-1))
             if best_deviation:
-                (distance, margin, suffix) = best_deviation
-                yield (gain + distance, margin, [edge] + suffix)
+                (distance, relax7, margin, suffix) = best_deviation
+                yield (gain + distance,  relax7_edge + relax7, margin, [edge] + suffix)
             elif budget < 100:
                 if gain == 0:
-                    yield (0, budget, [])
+                    yield (0, 0, budget, [])
                 else:
-                    yield (0, new_budget, [])
+                    yield (0, 0, new_budget, [])
 
 
 def compute_distance_and_margin(path, budget, burnt):
@@ -324,6 +345,7 @@ def compute_distance_and_margin(path, budget, burnt):
     remaining = budget
     pending_travelled = 0
     visited = set(burnt)
+    relax7 = 0
     for edge in path:
         if edge.cost <= remaining:
             remaining -= edge.cost
@@ -334,13 +356,15 @@ def compute_distance_and_margin(path, budget, burnt):
                     distance += edge.distance
                     travelled += pending_travelled
                     pending_travelled = 0
+                if edge.cars == {7}:
+                    relax7 += 1
         else:
             break
-    return (distance, budget - travelled)
+    return (distance, relax7, budget - travelled)
 
 
 def compute_margin(path, timeleft=TIME):
-    return compute_distance_and_margin(path, timeleft, set())[1]
+    return compute_distance_and_margin(path, timeleft, set())[2]
 
 def deviate_path(g, path, depth):
     """
@@ -351,14 +375,16 @@ def deviate_path(g, path, depth):
     prefix_distance = 0
     prefix = []
     prefix_visited = set()
+    prefix_relax7 = 0
     path_suffix_map = {
         e.start: path[i:]
         for (i,e) in enumerate(path)
     }
     for i,edge in enumerate(path):
-        for (suffix_distance, margin, suffix) in browse_deviation(edge.start, prefix_visited, path_suffix_map, budget, depth=depth):
+        for (suffix_distance, suffix_relax7, margin, suffix) in browse_deviation(edge.start, prefix_visited, path_suffix_map, budget, depth=depth):
             distance = prefix_distance + suffix_distance
-            yield (distance, margin, prefix + suffix)
+            relax7 = prefix_relax7 + suffix_relax7
+            yield (distance, relax7, margin, prefix + suffix)
         budget -= edge.cost
         prefix.append(edge)
         if edge.start in path_suffix_map:
@@ -366,6 +392,8 @@ def deviate_path(g, path, depth):
         if edge.idx not in prefix_visited:
             prefix_visited.add(edge.idx)
             prefix_distance += edge.distance
+            if edge.cars == {7}:
+                prefix_relax7 += 1
 
 def assert_valid_path(path):
     for (a,b) in zip(path, path[1:]):
@@ -379,6 +407,7 @@ def extend_with_path(path, former_path, budget):
     """
     intersection = path[-1].stop
     intersection_last_idx = -1
+    oneway = 0
     for edge in path:
         budget -= edge.cost
     for (i,e) in enumerate(former_path):
@@ -413,28 +442,28 @@ def deviate_postprocess(g, cars, depth):
         start = time.time()
         g.reset()
         new_cars = [
-            Car(id=cars[i].id, position=g[ORIGIN])
+            Car(id=i, position=g[ORIGIN])
             for i in range(8)
         ]
-
         for i in range(8):
             if i != car_id:
                 new_cars[i].follow_path(cars[i].edges)
         original_path = cars[car_id].edges
-        (former_distance, former_margin) = compute_distance_and_margin(original_path, TIME, {})
+        (former_distance, former_relax7, former_margin) = compute_distance_and_margin(original_path, TIME, {})
         best_deviation = max_or_none(deviate_path(g, original_path, depth))
         if best_deviation:
-            (d, m, prefix) = best_deviation
+            (d, r7, m, prefix) = best_deviation
             middle_point = prefix[-1].stop
             suffix = {
                 e.start: original_path[i:]
                 for (i,e) in enumerate(original_path)
             }.get(middle_point, [])
             new_path = prefix + suffix
-            (new_distance, new_margin) = compute_distance_and_margin(new_path, TIME, {})
+            (new_distance, new_relax7, new_margin) = compute_distance_and_margin(new_path, TIME, {})
+            print r7, new_relax7
             new_cars[car_id].follow_path(new_path, TIME)
             assert d == new_distance
-            if (new_distance, new_margin) > (former_distance, former_margin):
+            if (new_distance, new_relax7, new_margin) > (former_distance, former_relax7, former_margin):
                 print "  distance gain :", new_distance - former_distance
                 print "    margin gain :", new_margin - former_margin
                 cars = new_cars
@@ -487,6 +516,35 @@ def path_to_intersections(path):
     return intersections
 
 
+def search_opportunities(g, paths):
+    print "\n"*5
+    unvisited = [
+        edge
+        for edge in g.edges()
+        if edge.distance > 0 and (edge.reverse is None or edge.start < edge.stop)
+    ]
+    print "nb streets unvisited", len(unvisited)
+    oneway = {True:0, False:0}
+    for edge in unvisited:
+        oneway[edge.reverse is None] += 1
+    print "Oneway?"
+    for (k,v) in oneway.items():
+        print k,v
+    print "----------------"
+    path_intersections_list = []
+    for (i,path) in enumerate(paths):
+        path_intersections = { e.start for e in path }.union({path[-1].stop})
+        path_intersections_list.append(path_intersections)
+    for edge in unvisited:
+        print "--------"
+        print "Edge cost",edge.cost
+        for (i,path_intersections) in enumerate(path_intersections_list):
+            if edge.start in path_intersections:
+                (d, node) = djikstra_set(edge.stop, {edge.start})
+                print "Distance to path %i " % i, d + edge.cost
+                #print i, djikstra_set(edge.start, path_intersections)
+
+
 def score_solution(g, paths):
     g.reset()
     cars = [
@@ -498,8 +556,13 @@ def score_solution(g, paths):
     score = overall_score(cars)
     print "score    :  ", score
     print "--------------------"
+    print "\n"
     for (car_id, car) in enumerate(cars):
         print " marginal ", car_id, ":", car.marginal_score()
+    print "\n"
+    for (car_id, car) in enumerate(cars):
+        print " margin ", car_id, ":", car.timeleft
+    print " total margin ", ":", sum(car.timeleft for car in cars)
     inverse_graph = defaultdict(list)
     for edge in g.edges():
         inverse_graph[edge.stop].append(edge)
@@ -529,6 +592,8 @@ def score_solution(g, paths):
     print ahead_only
     print "Max length", sum(e.distance for e in g.edges() if e.reverse < e)
     print "Number of nodes", len(g.nodes)
+
+    search_opportunities(g, paths)
     
 
 def optimize_postprocessing(depth, input_filepath, output_filepath):
@@ -545,7 +610,11 @@ def optimize_postprocessing(depth, input_filepath, output_filepath):
 
     for r in count(1):
         print "Round % i" % r
-        random.shuffle(cars)
+        #random.shuffle(cars)
+        #sort(car.margin for car in)
+        cars.sort(key=lambda car:-car.timeleft)
+        for car in cars:
+            print car.id, ":", car.timeleft
         former_score = overall_score(cars)
         former_timeleft = sum(car.timeleft for car in cars)
         cars = postprocess(g, cars, depth)
