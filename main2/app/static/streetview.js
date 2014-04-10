@@ -75,11 +75,17 @@
             infowindow.open(map);
         });
       });
+    var carPaths = [];
     function drawItineraries(itineraries) {
         // Find the max end time from all itineraries and initialize Polylines.
         var maxTime = 0;
-        var carPaths = [];
         var lasts = []; // last point of the itinerary drawn in the prev step;
+        if (carPaths.length > 0) {
+            carPaths.map(function(carPath) {
+                carPath.setMap(null);
+            })
+            carPaths = [];
+        }
         for (var i = 0; i < itineraries.length; ++i) {
             var itinerary = itineraries[i];
             if (itinerary.length > 0) {
@@ -101,7 +107,6 @@
         var userInteracting = false;
 
         var slider = settings.slider;
-        console.log(maxTime);
         if (slider) {
             slider.slider({
             min: 0,
