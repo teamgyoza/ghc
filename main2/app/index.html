@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><style type="text/css">.gm-style .gm-style-mtc label,.gm-style .gm-style-mtc div{font-weight:400}</style><style type="text/css">.gm-style .gm-style-cc span,.gm-style .gm-style-cc a,.gm-style .gm-style-mtc div{font-size:10px}</style><link type="text/css" rel="stylesheet" href="./static/css"><style type="text/css">@media print {  .gm-style .gmnoprint, .gmnoprint {    display:none  }}@media screen {  .gm-style .gmnoscreen, .gmnoscreen {    display:none  }}</style><style type="text/css">.gm-style{font-family:Roboto,Arial,sans-serif;font-size:11px;font-weight:400;text-decoration:none}</style>
+<meta charset="utf-8">
+<link rel="shortcut icon" href="http://paris-contest-2014.appspot.com/static/favicon.ico">
+<title>Paris Hash Code</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="./static/bootstrap.css">
+<link rel="stylesheet" href="./static/jquery-ui.css">
+<link rel="stylesheet" href="./static/contest.css">
+<body style="">
+  <div class="container">
+    <div class="page-header">
+      <a href="http://paris-contest-2014.appspot.com/"><img class="logo" src="./static/hashcode.png" alt="Hash Code"></a>
+    </div>
+    <div class="row">
+      <div class="col-md-2">
+        nothing there
+      </div>
+      <div class="col-md-10">
+        <div class="panel panel-primary">
+          <div class="panel-heading">
+            <h3 class="panel-title">Team <b>Gyoza</b></h3>
+          </div>
+          <div class="panel-body">
+              <table class="table">
+                <tbody>
+                  <tr class="success">
+                    <td>
+                      <input id="solutionFilepath" type="text" value="best.txt" placeholder="input filepath"></input>
+                      <button id="loadsolution">Load solution</button>
+                    </td>
+                  </tr>
+                  <tr class="success">
+                    <td>Score : <span id="score">XXX</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div id="game-slider" class="ui-slider ui-slider-horizontal ui-widget ui-widget-content ui-corner-all"><a class="ui-slider-handle ui-state-default ui-corner-all" style="left: 81.34839785145397%;"></a></div>
+              <div id="game-canvas">
+              </div>
+              <div id="game-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://maps.googleapis.com/maps/api/js?sensor=false"></script>
+  <script src="./static/lodash.js"></script>
+  <script src="./static/jquery_minified"></script>
+  <script src="./static/bootstrap.min.js"></script>
+  <script src="./static/contest.js"></script>
+  <script type="text/javascript" src="./static/jquery-ui-1.9.2.custom.min.js"></script>
+  <script src="./static/streetview.js"></script>
+  <script type="text/javascript">
+    function score(carsPaths) {
+      var edgeAlreadyRun = {};
+      var carsSumDistance = carsPaths.map(function(carPaths){
+          var distances = carPaths.map(function(edge){
+            if (edgeAlreadyRun[edge.idx]==null) {
+            edgeAlreadyRun[edge.idx] = true;
+            return edge.distance
+            }
+            else return 0;
+            });
+          return _.reduce(distances, function(dA, dB) {
+            return dA+dB;
+            })
+          });
+      return _.reduce(carsSumDistance, function(dA, dB) {
+          return dA + dB;
+          })
+    }
+
+    var streetsData = {}, solutionData = {}, visualization;
+
+    $(document).ready(function () {
+      $.ajax({url: '/paris_54000.txt'}).done(function(data) {
+          var lines = data.split("\n");
+          var constants = lines[0].split(" "); //N, M, T, C, S
+          streetsData.N = +constants[0];
+          streetsData.M = +constants[1];
+          streetsData.T = +constants[2];
+          streetsData.C = +constants[3];
+          streetsData.S = +constants[4];
+          // get intersections
+          streetsData.nodes = lines.slice(1, streetsData.N+1).map(function(line, idx) {
+            var xy = line.split(" ");
+            return {idx: idx, x: +xy[0], y: +xy[1], neighbors: {}};
+            });
+          streetsData.edges = lines.slice(streetsData.N+1, streetsData.N+streetsData.M+1).map(function(line, idx) {
+            var data = line.split(" ");
+            var edge = {idx: idx, start: streetsData.nodes[+data[0]], stop: streetsData.nodes[+data[1]], bothways: +data[2], cost: +data[3], distance: +data[4]};
+            edge.start.neighbors[edge.stop.idx] = edge;
+            if (edge.bothways == 2) {
+              edge.stop.neighbors[edge.start.idx] = edge;
+            }
+            return edge;
+            });
+          visualization = $('#game-canvas').visualizeStreets(streetsData, {legend: $('#game-legend'), slider: $('#game-slider')})
+      });
+    });
+    $("#loadsolution").click(function(event){
+      var filepath = $("#solutionFilepath").val();
+      $.ajax({url: filepath}).done(function(data) {
+        var lines = data.split("\n");
+        var nbCars = +lines[0], carsIntersections=[], carsPaths=[], istart=2,
+          currentCarLineNb = +lines[1], iend=istart + currentCarLineNb;
+        for (var iCar = 0; iCar < nbCars; ++iCar) {
+          carsIntersections.push(lines.slice(istart, iend).map(function(d) {
+            return streetsData.nodes[+d];
+            }));
+          istart = iend+1;
+          currentCarLineNb = +lines[iend];
+          iend = istart+currentCarLineNb;
+        };
+        solutionData.carsIntersections = carsIntersections;
+
+        // carPaths = list of edges
+        carsPaths = carsIntersections.map(function(intersections) {
+          return _.zip(_.initial(intersections), intersections.slice(1, intersections.length)).map(function(elements){
+            var start=elements[0], stop=elements[1];
+            if (start.neighbors[stop.idx]==null) {
+            }
+            return start.neighbors[stop.idx];
+          })
+          })
+        solutionData.carsPaths = carsPaths;
+        $("#score").html(score(carsPaths));
+
+        //[ [ Lat, Lng ], Time ]
+        var itineraries = carsIntersections.map(function(intersections){
+            var time = 0, currentIntersection = intersections[0];
+            currentIntersection.neighbors[currentIntersection.idx] = {cost: 0};
+            var itinerary = intersections.map(function(intersection) {
+                time += currentIntersection.neighbors[intersection.idx].cost;
+                var step = [[intersection.x, intersection.y], time]
+                currentIntersection = intersection;
+                return step
+                });
+            return itinerary;
+            });
+        solutionData.itineraries = itineraries;
+        visualization.drawItineraries(itineraries);
+        });
+      });
+    </script>
+
+
+</body></html>

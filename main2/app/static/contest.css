@@ -1,0 +1,43 @@
+.page-header a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page-header img.logo {
+  display: inline;
+  height: 35px;
+}
+
+.in-row-form input {
+  display: inline;
+}
+
+#game-canvas {
+  width: 100%;
+  height: 800px;
+}
+
+#game-legend {
+  margin-top: 10px;
+}
+
+#game-legend ul {
+  list-style: none;
+  padding: 0;
+}
+
+#game-legend ul li {
+  display: inline;
+  margin-right: 20px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+h1 {
+  text-align: center;
+  margin: 40px;
+}
+
+.admin-link {
+  color: #f0ad4e;
+}
