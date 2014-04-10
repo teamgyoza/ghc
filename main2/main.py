@@ -460,11 +460,10 @@ def score_solution(solution):
 
 def score(g, car_paths):
     g.reset()
-    for car_path in car_paths:
-        cars = [
-            Car(id=car_id, position=g[ORIGIN])
-                for car_id in range(8)
-        ]
+    cars = [
+        Car(id=car_id, position=g[ORIGIN])
+            for car_id in range(8)
+    ]
     for (car, car_path) in zip(cars, car_paths):
         car.follow_path(car_path)
     return overall_score(cars)
